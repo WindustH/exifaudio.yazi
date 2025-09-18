@@ -8,14 +8,14 @@ Preview audio metadata and cover on [Yazi](https://github.com/sxyazi/yazi).
 
 ```sh
 # Automatically with yazi 0.3.0
-ya pack -a "Sonico98/exifaudio"
+ya pack -a "WindustH/exifaudio"
 
 # Or manually under:
 # Linux/macOS
-git clone https://github.com/Sonico98/exifaudio.yazi.git ~/.config/yazi/plugins/exifaudio.yazi
+git clone https://github.com/WindustH/exifaudio.yazi.git ~/.config/yazi/plugins/exifaudio.yazi
 
 # Windows
-git clone https://github.com/Sonico98/exifaudio.yazi.git %AppData%\yazi\config\plugins\exifaudio.yazi
+git clone https://github.com/WindustH/exifaudio.yazi.git %AppData%\yazi\config\plugins\exifaudio.yazi
 ```
 
 ## Usage
