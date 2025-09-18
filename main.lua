@@ -10,17 +10,17 @@ end
 
 function Exiftool(...)
 	local child = Command("exiftool")
-		:arg{
+		:arg({
 			"-q", "-q", "-S", "-Title", "-SortName",
 			"-TitleSort", "-TitleSortOrder", "-Artist",
 			"-SortArtist", "-ArtistSort", "-PerformerSortOrder",
 			"-Album", "-SortAlbum", "-AlbumSort", "-AlbumSortOrder",
 			"-AlbumArtist", "-SortAlbumArtist", "-AlbumArtistSort",
 			"-AlbumArtistSortOrder", "-Genre", "-TrackNumber",
-			"-Year", "-Duration", "-SampleRate", 
+			"-Year", "-Duration", "-SampleRate",
 			"-AudioSampleRate", "-AudioBitrate", "-AvgBitrate",
 			"-Channels", "-AudioChannels", tostring(...),
-		}
+		})
 		:stdout(Command.PIPED)
 		:stderr(Command.NULL)
 		:spawn()
@@ -31,9 +31,9 @@ function Mediainfo(...)
 	local file, cache_dir = ...
 	local template = cache_dir.."mediainfo.txt"
 	local child = Command("mediainfo")
-		:arg{
+		:arg({
 			"--Output=file://"..template, tostring(file)
-		}
+		})
 		:stdout(Command.PIPED)
 		:stderr(Command.NULL)
 		:spawn()
@@ -41,8 +41,13 @@ function Mediainfo(...)
 end
 
 function M:peek(job)
-	local cache = ya.file_cache(job)
+	local start, cache = os.clock(), ya.file_cache(job)
 	if not cache then
+		return
+	end
+
+	local ok, err = self:preload(job)
+	if not ok or err then
 		return
 	end
 
@@ -55,14 +60,22 @@ function M:peek(job)
 		status, child = pcall(Exiftool, job.file.url)
 		if not status or child == nil then
 			local error = ui.Line { ui.Span("Make sure exiftool is installed and in your PATH") }
-			local p = ui.Text(error):area(job.area):wrap(ui.Wrap.YES)
-			ya.preview_widget(job, { p })
+			-- TODO)) Remove legacy method when v0.4 gets released
+			local function display_error_legacy()
+				local p = ui.Paragraph(job.area, { error }):wrap(ui.Paragraph.WRAP)
+				ya.preview_widgets(job, { p })
+			end
+			local function display_error()
+				local p = ui.Text(error):area(job.area):wrap(ui.Text.WRAP)
+				ya.preview_widgets(job, { p })
+			end
+			if pcall(display_error) then else pcall(display_error_legacy) end
 			return
 		end
 	end
 
 	local limit = job.area.h
-	local i, metadata = 0, {}
+	local text_line_index, metadata = 0, {}
 	repeat
 		local next, event = child:read_line()
 		if event == 1 then
@@ -71,34 +84,48 @@ function M:peek(job)
 			break
 		end
 
-		i = i + 1
-		if i > job.skip then
+		text_line_index = text_line_index + 1
+		if text_line_index > job.skip then
 			local m_title, m_tag = Prettify(next)
 			if m_title ~= "" and m_tag ~= "" then
 				local ti = ui.Span(m_title):bold()
 				local ta = ui.Span(m_tag)
 				table.insert(metadata, ui.Line{ti, ta})
-				table.insert(metadata, ui.Line{})
 			end
 		end
-	until i >= job.skip + limit
+	until text_line_index >= job.skip + limit
 
-	local p = ui.Text(metadata):area(job.area):wrap(ui.Wrap.YES)
-	ya.preview_widget(job, { p })
+	-- TODO)) Remove legacy method when v0.4 gets released
+	local function display_metadata_legacy()
+		local p = ui.Paragraph(job.area, metadata):wrap(ui.Paragraph.WRAP)
+		ya.preview_widgets(job, { p })
+	end
 
-	local cover_width = job.area.w / 2 - 5
-	local cover_height = (job.area.h / 4) + 3
+	local function display_metadata()
+		local p = ui.Text(metadata):area(job.area):wrap(ui.Text.WRAP)
+		ya.preview_widgets(job, { p })
+	end
 
-	local bottom_right = ui.Rect {
-		x = job.area.right - cover_width,
-		y = job.area.bottom - cover_height,
+	if pcall(display_metadata) then else pcall(display_metadata_legacy) end
+
+	local text_height = text_line_index
+	local cover_width = job.area.w*1.0
+	local cover_height = (job.area.h-text_height)*1.0
+
+	-- local ratio_total=rt.manager.ratio[1]+rt.manager.ratio[2]+rt.manager.ratio[3]
+	-- x = job.area.w/ratio_total*(ratio_total-rt.manager.ratio[3]/2)-cover_width/2
+	local show_area = ui.Rect {
+		x= job.area.left+job.area.w/2-cover_width/2,
+		y = job.area.top+job.area.h/2+text_height/2-cover_height/2,
 		w = cover_width,
 		h = cover_height,
 	}
 
-	if self:preload(job) == true then
-		ya.image_show(cache, bottom_right)
-	end
+	-- if self:preload(job) == 1 then
+	-- 	ya.image_show(cache, bottom_right)
+	-- end
+	ya.sleep(math.max(0, rt.preview.image_delay / 1000 + start - os.clock()))
+	ya.image_show(cache, show_area)
 end
 
 function Prettify(metadata)
@@ -169,6 +196,9 @@ end
 function M:preload(job)
 	local cache = ya.file_cache(job)
 	if not cache or fs.cha(cache) then
+		if not ya.__250127 then -- TODO: remove this
+			return 1
+		end
 		return true
 	end
 
@@ -200,12 +230,15 @@ Channels: %Channel(s)%"\
 	fs.write(Url(cache_dir.."mediainfo.txt"), mediainfo_template)
 
 	local output = Command("exiftool")
-		:arg{ "-b", "-CoverArt", "-Picture", tostring(job.file.url) }
+		:arg({ "-b", "-CoverArt", "-Picture", tostring(job.file.url) })
 		:stdout(Command.PIPED)
 		:stderr(Command.PIPED)
 		:output()
 
 	if not output then
+		if not ya.__250127 then -- TODO: remove this
+			return 0
+		end
 		return true, Err("Couldn't extract cover art, error: %s", err)
 	end
 
